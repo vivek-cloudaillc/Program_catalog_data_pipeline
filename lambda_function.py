@@ -13,13 +13,8 @@ RAW_PREFIX = ""
 PDF_PREFIX = ""
 ALL_PROGRAMS_KEY = ""
 
-# AWS Clients
+# AWS S3 Client
 s3_client = boto3.client("s3")
-dynamodb = boto3.resource("dynamodb")
-
-# DynamoDB Configuration
-TABLE_NAME = "program_data"
-table = dynamodb.Table(TABLE_NAME)
 
 # Scrape list of programs
 async def scrape_programs(session, url):
@@ -134,26 +129,6 @@ def read_data_from_s3(bucket_name, file_key):
         print(f"Error reading S3 file {file_key}: {e}")
         return None
 
-# Load records into DynamoDB
-def load_data_to_dynamodb(data):
-    success_count = 0
-    failed_count = 0
-    failed_items = []
-    for record in data:
-        try:
-            if "programTitle" not in record or "department" not in record:
-                print(f"Skipping record due to missing keys: {record}")
-                failed_count += 1
-                continue
-            record["department"] = record["department"] or "Not Provided"
-            table.put_item(Item=record)
-            success_count += 1
-        except Exception as e:
-            print(f"Error inserting record: {str(e)}")
-            failed_count += 1
-            failed_items.append(record)
-    return success_count, failed_count, failed_items
-
 # Main async runner
 async def run():
     urls = [
@@ -185,17 +160,10 @@ async def run():
         ContentType="application/json"
     )
     print("✅ Uploaded cleaned allprograms.json")
-    data = read_data_from_s3(BUCKET, ALL_PROGRAMS_KEY)
-    if data:
-        success, failed, failed_records = load_data_to_dynamodb(data)
-        print(f"📥 DynamoDB Insert: {success} success, {failed} failed.")
-    else:
-        print("❌ Failed to read allprograms.json from S3 for DynamoDB insert.")
 
 def lambda_handler(event, context):
     global BUCKET, OUTPUT_PREFIX, RAW_PREFIX, PDF_PREFIX, ALL_PROGRAMS_KEY
 
-    # Require all values to be passed in the event JSON
     BUCKET = event["bucket"]
     OUTPUT_PREFIX = event["output_prefix"]
     RAW_PREFIX = event["raw_prefix"]
@@ -206,5 +174,5 @@ def lambda_handler(event, context):
 
     return {
         "statusCode": 200,
-        "body": "Catalog processed and pushed to DynamoDB successfully."
+        "body": "Catalog processed and JSON uploaded to S3 successfully."
     }
